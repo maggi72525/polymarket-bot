@@ -12,6 +12,22 @@ POLL_INTERVAL = 20
 BASE_URL = "https://data-api.polymarket.com"
 seen_trade_ids = set()
 DATA_FILE = "trades.json"
+STATS_FILE = "stats.json"
+
+if os.path.exists(STATS_FILE):
+    with open(STATS_FILE, "r") as f:
+        stats = json.load(f)
+else:
+    stats = {
+        "total": 0,
+        "wins": 0,
+        "losses": 0,
+        "profit": 0
+    }
+
+def save_stats():
+    with open(STATS_FILE, "w") as f:
+        json.dump(stats, f)
 
 # load saved trades on startup
 if os.path.exists(DATA_FILE):
@@ -101,6 +117,16 @@ def format_trade(trade):
 
             profit_pct = ((price - buy_price) / buy_price) * 100 if buy_price else 0
             profit_usd = usdc - buy_value
+            
+            stats["total"] += 1
+stats["profit"] += profit_usd
+
+if profit_usd > 0:
+    stats["wins"] += 1
+else:
+    stats["losses"] += 1
+
+save_stats()
 
             # emoji logic
             if profit_pct >= 50:
@@ -146,10 +172,72 @@ def monitor():
                     print("New trade sent!")
         except Exception as e:
             print(f"Error: {e}")
+
+        check_commands()
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
+    def send_stats():
+    total = stats["total"]
+    wins = stats["wins"]
+    losses = stats["losses"]
+    profit = stats["profit"]
+
+    winrate = (wins/total*100) if total>0 else 0
+
+    msg = (
+        f"📊 <b>Wallet Stats</b>\n"
+        f"Total Trades: {total}\n"
+        f"🟢 Wins: {wins}\n"
+        f"🔴 Losses: {losses}\n"
+        f"🏆 Winrate: {winrate:.1f}%\n"
+        f"💰 Total Profit: ${profit:.2f}"
+    )
+
+    send_telegram(msg)
 
     monitor()
+    def check_commands():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    try:
+        res = requests.get(url).json()
+        for update in res.get("result", []):
+            if "message" in update:
+                text = update["message"].get("text", "")
+                chat_id = update["message"]["chat"]["id"]
+
+                if text == "/stats":
+                    total = stats["total"]
+                    wins = stats["wins"]
+                    losses = stats["losses"]
+                    profit = stats["profit"]
+                    winrate = (wins/total*100) if total>0 else 0
+
+                    msg = (
+                        f"📊 <b>Wallet Stats</b>\n"
+                        f"Total Trades: {total}\n"
+                        f"🟢 Wins: {wins}\n"
+                        f"🔴 Losses: {losses}\n"
+                        f"🏆 Winrate: {winrate:.1f}%\n"
+                        f"💰 Total Profit: ${profit:.2f}"
+                    )
+
+                    requests.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                        data={
+                            "chat_id": chat_id,
+                            "text": msg,
+                            "parse_mode": "HTML"
+                        }
+                    )
+
+        # clear updates after reading
+        if res.get("result"):
+            last_update_id = res["result"][-1]["update_id"]
+            requests.get(f"{url}?offset={last_update_id + 1}")
+
+    except Exception as e:
+        print("Command error:", e)
+
 
 
