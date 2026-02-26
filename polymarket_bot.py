@@ -37,6 +37,45 @@ def send_telegram(text, reply_to=None):
         print("Telegram error:", e)
         return None
 
+def check_commands():
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    try:
+        r = requests.get(url, timeout=10).json()
+        for update in r.get("result", []):
+            msg = update.get("message", {})
+            text = msg.get("text", "")
+            chat = str(msg.get("chat", {}).get("id"))
+
+            if chat != CHAT_ID:
+                continue
+
+            if text == "/stats":
+                total = stats["total"]
+                wins = stats["wins"]
+                losses = stats["losses"]
+                profit = stats["profit"]
+                winrate = (wins/total*100) if total else 0
+
+                stat_msg = (
+                    f"📊 <b>Wallet Stats</b>\n"
+                    f"━━━━━━━━━━━━\n"
+                    f"Total Trades: {total}\n"
+                    f"🟢 Wins: {wins}\n"
+                    f"🔴 Losses: {losses}\n"
+                    f"🏆 Winrate: {winrate:.1f}%\n"
+                    f"💰 Total Profit: ${profit:.2f}"
+                )
+
+                send_telegram(stat_msg)
+
+        # clear updates after reading
+        if r.get("result"):
+            last = r["result"][-1]["update_id"]
+            requests.get(url + f"?offset={last+1}")
+
+    except Exception as e:
+        print("Cmd error:", e)
+
 # ---------- Persistence ----------
 if os.path.exists(DATA_FILE):
     with open(DATA_FILE, "r") as f:
@@ -153,6 +192,8 @@ def main():
 
     while True:
         try:
+            check_commands()
+            
             trades = get_trades()
             for t in reversed(trades):
                 tid = t.get("id") or t.get("txHash")
@@ -166,4 +207,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
