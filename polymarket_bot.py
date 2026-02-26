@@ -81,7 +81,8 @@ def format_trade(trade):
     usdc = float(trade.get("usdcSize", 0))
     asset = f"{market}-{outcome}"
 
-    market_link = f"https://polymarket.com/event/{trade.get('slug','')}"
+    market_id = trade.get("market", "")
+    market_link = f"https://polymarket.com/market/{market_id}"
 
     # ================= BUY =================
     if side == "BUY":
@@ -218,3 +219,4 @@ def monitor():
 # ===== start =====
 if __name__ == "__main__":
     monitor()
+
