@@ -38,11 +38,15 @@ def send_telegram(text, reply_to=None):
         return None
 
 def check_commands():
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
     try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
         r = requests.get(url, timeout=10).json()
+
         for update in r.get("result", []):
-            msg = update.get("message", {})
+            msg = update.get("message")
+            if not msg:
+                continue
+
             text = msg.get("text", "")
             chat = str(msg.get("chat", {}).get("id"))
 
@@ -56,9 +60,8 @@ def check_commands():
                 profit = stats["profit"]
                 winrate = (wins/total*100) if total else 0
 
-                stat_msg = (
+                send_telegram(
                     f"📊 <b>Wallet Stats</b>\n"
-                    f"━━━━━━━━━━━━\n"
                     f"Total Trades: {total}\n"
                     f"🟢 Wins: {wins}\n"
                     f"🔴 Losses: {losses}\n"
@@ -66,12 +69,11 @@ def check_commands():
                     f"💰 Total Profit: ${profit:.2f}"
                 )
 
-                send_telegram(stat_msg)
-
-        # clear updates after reading
-        if r.get("result"):
-            last = r["result"][-1]["update_id"]
-            requests.get(url + f"?offset={last+1}")
+        if "result" in r and len(r["result"]) > 0:
+            last_id = r["result"][-1]["update_id"]
+            requests.get(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates?offset={last_id+1}"
+            )
 
     except Exception as e:
         print("Cmd error:", e)
@@ -207,5 +209,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
