@@ -3,226 +3,225 @@ import time
 import json
 import os
 
-# ================= CONFIG =================
+# ================== CONFIG ==================
+
 BOT_TOKEN = "8729306597:AAEIpxB8JurlTgQNLCes7s5OWOSQlm6b6ME"
 CHAT_ID = "7086039959"
-WALLET_ADDRESS = "0xc1016d1bfc6244fd51fcf5c8dc1b10afc52be6d1"
-POLL_INTERVAL = 20
-BASE_URL = "https://data-api.polymarket.com"
-PROFILE_LINK = f"https://polymarket.com/profile/{WALLET_ADDRESS}"
-# ==========================================
+WALLET_ADDRESS = "0x1016d1bfc6244fd51fcf5c8dc1b10afc52be6d1"
 
-seen_trade_ids = set()
+BASE_URL = "https://data-api.polymarket.com"
+POLL_INTERVAL = 25
+
 DATA_FILE = "trades.json"
 STATS_FILE = "stats.json"
 
-# ===== load open trades =====
+PROFILE_LINK = f"https://polymarket.com/profile/{WALLET_ADDRESS}"
+
+# ================== TELEGRAM ==================
+
+def send_telegram(message, reply_to=None):
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+payload = {
+"chat_id": CHAT_ID,
+"text": message,
+"parse_mode": "HTML",
+"disable_web_page_preview": True
+}
+if reply_to:
+payload["reply_to_message_id"] = reply_to
+
+```
+try:
+    r = requests.post(url, json=payload, timeout=15)
+    return r.json().get("result", {}).get("message_id")
+except:
+    return None
+```
+
+# ================== LOAD DATA ==================
+
 if os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "r") as f:
-        open_trades = json.load(f)
+with open(DATA_FILE, "r") as f:
+open_trades = json.load(f)
 else:
-    open_trades = {}
+open_trades = {}
 
-def save_trades():
-    with open(DATA_FILE, "w") as f:
-        json.dump(open_trades, f)
-
-# ===== load stats =====
 if os.path.exists(STATS_FILE):
-    with open(STATS_FILE, "r") as f:
-        stats = json.load(f)
+with open(STATS_FILE, "r") as f:
+stats = json.load(f)
 else:
-    stats = {
-        "total": 0,
-        "wins": 0,
-        "losses": 0,
-        "profit": 0
-    }
+stats = {"total":0,"wins":0,"losses":0,"profit":0}
+
+def save_data():
+with open(DATA_FILE,"w") as f:
+json.dump(open_trades,f)
 
 def save_stats():
-    with open(STATS_FILE, "w") as f:
-        json.dump(stats, f)
+with open(STATS_FILE,"w") as f:
+json.dump(stats,f)
 
-# ===== telegram sender =====
-def send_telegram(message, reply_to=None):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    if reply_to:
-        payload["reply_to_message_id"] = reply_to
-    r = requests.post(url, data=payload)
-    try:
-        return r.json()["result"]["message_id"]
-    except:
-        return None
+# ================== FETCH TRADES ==================
 
-# ===== get trades =====
-def get_recent_trades():
-    try:
-        url = f"{BASE_URL}/activity"
-        params = {"user": WALLET_ADDRESS, "limit": 30}
-        r = requests.get(url, params=params, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-    except:
-        pass
-    return []
+def get_trades():
+url = f"{BASE_URL}/activity"
+params = {"user": WALLET_ADDRESS, "limit": 40}
+try:
+r = requests.get(url, params=params, timeout=15)
+if r.status_code == 200:
+return r.json()
+except:
+pass
+return []
 
-# ===== format trade =====
+# ================== FORMAT ==================
+
 def format_trade(trade):
-    side = trade.get("side", "").upper()
-    market = trade.get("title", "Unknown")[:80]
-    outcome = trade.get("outcome", "?")
-    price = float(trade.get("price", 0)) * 100
-    size = float(trade.get("size", 0))
-    usdc = float(trade.get("usdcSize", 0))
-    asset = f"{market}-{outcome}"
+side = trade.get("side","").upper()
+market = trade.get("title","Unknown")[:90]
+outcome = trade.get("outcome","?")
+price = float(trade.get("price",0))*100
+size = float(trade.get("size",0))
+usdc = float(trade.get("usdcSize",0))
+slug = trade.get("slug")
 
-    slug = trade.get("slug")
-
+```
 if slug:
     market_link = f"https://polymarket.com/event/{slug}"
 else:
     market_link = "https://polymarket.com"
 
-    # ================= BUY =================
-    if side == "BUY":
-        msg = (
-            f"🟢 <b>BUY</b>\n"
-            f"━━━━━━━━━━━━\n"
+asset = f"{market}-{outcome}"
+
+# ================= BUY =================
+if side == "BUY":
+    msg = (
+        f"🟢 <b>BUY</b>\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"📊 <b>{market}</b>\n"
+        f"🎯 Outcome: {outcome}\n"
+        f"💰 Price: {price:.2f}¢\n"
+        f"📦 Shares: {size:.2f}\n"
+        f"💵 Value: ${usdc:.2f}\n\n"
+        f"🔗 <a href='{market_link}'>Open Market</a>\n"
+        f"👤 <a href='{PROFILE_LINK}'>Wallet Profile</a>"
+    )
+
+    msg_id = send_telegram(msg)
+
+    open_trades[asset] = {
+        "buy_price": price,
+        "buy_value": usdc,
+        "msg_id": msg_id
+    }
+    save_data()
+    return
+
+# ================= SELL =================
+if side == "SELL":
+    if asset in open_trades:
+        buy = open_trades[asset]
+        buy_price = buy["buy_price"]
+        buy_value = buy["buy_value"]
+        reply_id = buy["msg_id"]
+
+        profit_pct = ((price-buy_price)/buy_price)*100 if buy_price else 0
+        profit_usd = usdc - buy_value
+
+        stats["total"] += 1
+        stats["profit"] += profit_usd
+
+        if profit_usd > 0:
+            stats["wins"] += 1
+        else:
+            stats["losses"] += 1
+
+        save_stats()
+
+        # emoji logic
+        if profit_pct >= 50:
+            emoji="🚀"
+        elif profit_pct >= 15:
+            emoji="🟢"
+        elif profit_pct >= 0:
+            emoji="🟡"
+        else:
+            emoji="🔴"
+
+        sell_msg = (
+            f"{emoji} <b>SELL CLOSED</b>\n"
+            f"━━━━━━━━━━━━━━\n"
             f"📊 <b>{market}</b>\n"
             f"🎯 Outcome: {outcome}\n"
-            f"💰 Price: {price:.1f}¢\n"
-            f"📦 Shares: {size:.2f}\n"
-            f"💵 Value: ${usdc:.2f}\n"
+            f"💰 Sell Price: {price:.2f}¢\n"
+            f"💵 Exit: ${usdc:.2f}\n"
+            f"📈 PnL: {profit_pct:.1f}% (${profit_usd:.2f})\n\n"
             f"🔗 <a href='{market_link}'>Open Market</a>"
         )
 
-        msg_id = send_telegram(msg)
+        send_telegram(sell_msg, reply_to=reply_id)
 
-        open_trades[asset] = {
-            "buy_price": price,
-            "buy_value": usdc,
-            "msg_id": msg_id,
-            "market": market,
-            "outcome": outcome
-        }
-        save_trades()
-        return
+        del open_trades[asset]
+        save_data()
+```
 
-    # ================= SELL =================
-    if side == "SELL":
-        if asset in open_trades:
-            buy_data = open_trades[asset]
-            buy_price = buy_data["buy_price"]
-            buy_value = buy_data["buy_value"]
-            reply_msg = buy_data["msg_id"]
+# ================= STATS =================
 
-            profit_pct = ((price - buy_price) / buy_price) * 100 if buy_price else 0
-            profit_usd = usdc - buy_value
+def send_stats():
+total=stats["total"]
+wins=stats["wins"]
+losses=stats["losses"]
+profit=stats["profit"]
+winrate=(wins/total*100) if total>0 else 0
 
-            stats["total"] += 1
-            stats["profit"] += profit_usd
-            if profit_usd > 0:
-                stats["wins"] += 1
-            else:
-                stats["losses"] += 1
-            save_stats()
+```
+msg=(
+    f"📊 <b>Wallet Stats</b>\n"
+    f"Total Trades: {total}\n"
+    f"🟢 Wins: {wins}\n"
+    f"🔴 Losses: {losses}\n"
+    f"🏆 Winrate: {winrate:.1f}%\n"
+    f"💰 Total Profit: ${profit:.2f}"
+)
+send_telegram(msg)
+```
 
-            if profit_pct >= 50:
-                emoji = "🚀"
-            elif profit_pct >= 15:
-                emoji = "🟢"
-            elif profit_pct >= 0:
-                emoji = "🟡"
-            else:
-                emoji = "🔴"
+# ================= COMMAND LISTENER =================
 
-            sell_msg = (
-                f"{emoji} <b>SELL CLOSED</b>\n"
-                f"━━━━━━━━━━━━\n"
-                f"📊 <b>{market}</b>\n"
-                f"🎯 Outcome: {outcome}\n"
-                f"💰 Sell Price: {price:.1f}¢\n"
-                f"💵 Exit Value: ${usdc:.2f}\n"
-                f"📈 PnL: {profit_pct:.1f}% (${profit_usd:.2f})"
-            )
-
-            send_telegram(sell_msg, reply_to=reply_msg)
-
-            del open_trades[asset]
-            save_trades()
-            return
-
-        else:
-            send_telegram(f"🔴 SELL {market} {outcome} @ {price:.1f}¢")
-
-# ===== stats command =====
+last_update=0
 def check_commands():
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-        res = requests.get(url).json()
+global last_update
+url=f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+params={"offset":last_update+1,"timeout":2}
+try:
+r=requests.get(url,params=params,timeout=10).json()
+for u in r.get("result",[]):
+last_update=u["update_id"]
+text=u.get("message",{}).get("text","")
+if text=="/stats":
+send_stats()
+except:
+pass
 
-        for update in res.get("result", []):
-            if "message" in update:
-                text = update["message"].get("text", "")
-                chat = update["message"]["chat"]["id"]
+# ================= MAIN LOOP =================
 
-                if text == "/stats":
-                    total = stats["total"]
-                    wins = stats["wins"]
-                    losses = stats["losses"]
-                    profit = stats["profit"]
-                    winrate = (wins/total*100) if total>0 else 0
+print("Bot running...")
+seen=set()
 
-                    msg = (
-                        f"📊 <b>Wallet Stats</b>\n"
-                        f"Total Trades: {total}\n"
-                        f"🟢 Wins: {wins}\n"
-                        f"🔴 Losses: {losses}\n"
-                        f"🏆 Winrate: {winrate:.1f}%\n"
-                        f"💰 Total Profit: ${profit:.2f}"
-                    )
+while True:
+try:
+trades=get_trades()
+for t in reversed(trades):
+tid=t.get("id") or str(t)
+if tid not in seen:
+seen.add(tid)
+format_trade(t)
+print("Trade sent")
 
-                    requests.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        data={"chat_id": chat, "text": msg, "parse_mode":"HTML"}
-                    )
+```
+    check_commands()
+    time.sleep(POLL_INTERVAL)
 
-        if res.get("result"):
-            last = res["result"][-1]["update_id"]
-            requests.get(f"{url}?offset={last+1}")
-
-    except:
-        pass
-
-# ===== monitor loop =====
-def monitor():
-    print(f"Bot started tracking {WALLET_ADDRESS}")
-    send_telegram(f"🤖 <b>Bot Started</b>\nTracking:\n<code>{WALLET_ADDRESS}</code>")
-
-    while True:
-        try:
-            trades = get_recent_trades()
-            for t in reversed(trades):
-                tid = t.get("id") or t.get("txHash") or str(t)
-                if tid not in seen_trade_ids:
-                    seen_trade_ids.add(tid)
-                    format_trade(t)
-                    print("New trade sent")
-
-        except Exception as e:
-            print("Error:", e)
-
-        check_commands()
-        time.sleep(POLL_INTERVAL)
-
-# ===== start =====
-if __name__ == "__main__":
-    monitor()
-
-
+except Exception as e:
+    print("Error:",e)
+    time.sleep(10)
+```
