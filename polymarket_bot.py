@@ -1,6 +1,8 @@
 import requests
 import time
 from datetime import datetime
+import json
+import os
 
 TELEGRAM_TOKEN = "8729306597:AAEIpxB8JurlTgQNLCes7s5OWOSQlm6b6ME"
 CHAT_ID = "7086039959"
@@ -9,7 +11,18 @@ POLL_INTERVAL = 20
 
 BASE_URL = "https://data-api.polymarket.com"
 seen_trade_ids = set()
-open_trades = {}
+DATA_FILE = "trades.json"
+
+# load saved trades on startup
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "r") as f:
+        open_trades = json.load(f)
+else:
+    open_trades = {}
+
+def save_trades():
+    with open(DATA_FILE, "w") as f:
+        json.dump(open_trades, f)
 trade_history = {}
 
 def send_telegram(message, reply_to=None):
@@ -76,6 +89,7 @@ def format_trade(trade):
                 "market": market,
                 "outcome": outcome
             }
+            save_trades()
 
     # ================= SELL =================
     elif side == "SELL":
@@ -110,6 +124,7 @@ def format_trade(trade):
 
             send_telegram(sell_msg, reply_to=msg_id)
             del open_trades[asset]
+            save_trades()
 
         else:
             # fallback sell
@@ -136,4 +151,5 @@ def monitor():
 if __name__ == "__main__":
 
     monitor()
+
 
