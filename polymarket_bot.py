@@ -10,6 +10,7 @@ POLL_INTERVAL = 20
 BASE_URL = "https://data-api.polymarket.com"
 seen_trade_ids = set()
 open_trades = {}
+trade_history = {}
 
 def send_telegram(message, reply_to=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -42,57 +43,77 @@ def get_recent_trades():
 
 def format_trade(trade):
     side = trade.get("side", "").upper()
-    market = trade.get("title", "Unknown Market")[:60]
+    market = trade.get("title", "Unknown Market")
     outcome = trade.get("outcome", "?")
     price = float(trade.get("price", 0)) * 100
     size = float(trade.get("size", 0))
     usdc = float(trade.get("usdcSize", 0))
+    asset = trade.get("asset", market + outcome)
 
-    trade_key = f"{market}-{outcome}"
+    market_slug = trade.get("slug", "")
+    market_link = f"https://polymarket.com/event/{market_slug}" if market_slug else "https://polymarket.com"
 
+    # ================= BUY =================
     if side == "BUY":
-        message = (
-            f"🟢 BUY\n"
+        msg = (
+            f"🟢 <b>BUY</b>\n"
             f"━━━━━━━━━━━━━━━━━━\n"
-            f"📊 <b>Market:</b> {market}\n"
-            f"🎯 <b>Outcome:</b> {outcome}\n"
-            f"💰 <b>Price:</b> {price:.1f}¢\n"
-            f"📦 <b>Shares:</b> {size:.2f}\n"
-            f"💵 <b>USDC:</b> ${usdc:.2f}\n"
-            f"🔗 <a href='https://polymarket.com/profile/{WALLET_ADDRESS}'>View Profile</a>"
+            f"📊 <b>{market}</b>\n"
+            f"🎯 Outcome: {outcome}\n"
+            f"💰 Price: {price:.1f}¢\n"
+            f"📦 Shares: {size:.2f}\n"
+            f"💵 Value: ${usdc:.2f}\n"
+            f"🔗 <a href='{market_link}'>Open Market</a>"
         )
 
-        sent = send_telegram(message)
+        sent = send_telegram(msg)
         if sent and sent.get("ok"):
             msg_id = sent["result"]["message_id"]
-            open_trades[trade_key] = {
-                "price": price,
-                "msg_id": msg_id
+            open_trades[asset] = {
+                "buy_price": price,
+                "buy_value": usdc,
+                "msg_id": msg_id,
+                "market": market,
+                "outcome": outcome
             }
 
+    # ================= SELL =================
     elif side == "SELL":
-        if trade_key in open_trades:
-            buy_price = open_trades[trade_key]["price"]
-            msg_id = open_trades[trade_key]["msg_id"]
-            profit = ((price - buy_price) / buy_price) * 100 if buy_price else 0
+        if asset in open_trades:
+            buy_data = open_trades[asset]
+            buy_price = buy_data["buy_price"]
+            buy_value = buy_data["buy_value"]
+            msg_id = buy_data["msg_id"]
 
-            message = (
-                f"🔴 SELL\n"
+            profit_pct = ((price - buy_price) / buy_price) * 100 if buy_price else 0
+            profit_usd = usdc - buy_value
+
+            # emoji logic
+            if profit_pct >= 50:
+                emoji = "🚀"
+            elif profit_pct >= 15:
+                emoji = "🟢"
+            elif profit_pct >= 0:
+                emoji = "🟡"
+            else:
+                emoji = "🔴"
+
+            sell_msg = (
+                f"{emoji} <b>SELL CLOSED</b>\n"
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"📊 <b>Market:</b> {market}\n"
-                f"🎯 <b>Outcome:</b> {outcome}\n"
-                f"💰 <b>Sell Price:</b> {price:.1f}¢\n"
-                f"📦 <b>Shares:</b> {size:.2f}\n"
-                f"💵 <b>USDC:</b> ${usdc:.2f}\n"
-                f"📈 <b>Profit:</b> {profit:.1f}%"
+                f"📊 <b>{market}</b>\n"
+                f"🎯 Outcome: {outcome}\n"
+                f"💰 Sell Price: {price:.1f}¢\n"
+                f"💵 Exit Value: ${usdc:.2f}\n"
+                f"📈 PnL: {profit_pct:.1f}% (${profit_usd:.2f})"
             )
 
-            send_telegram(message, reply_to=msg_id)
-            del open_trades[trade_key]
-        else:
-            message = f"🔴 SELL {market} {outcome} @ {price:.1f}¢"
-            send_telegram(message)
+            send_telegram(sell_msg, reply_to=msg_id)
+            del open_trades[asset]
 
+        else:
+            # fallback sell
+            send_telegram(f"🔴 SELL {market} {outcome} @ {price:.1f}¢")
 def monitor():
     print(f"Bot started! Tracking: {WALLET_ADDRESS}")
     trades = get_recent_trades()
@@ -115,3 +136,4 @@ def monitor():
 if __name__ == "__main__":
 
     monitor()
+
