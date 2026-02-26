@@ -1,3 +1,4 @@
+import threading
 import requests
 import time
 import json
@@ -136,7 +137,7 @@ def main():
     seen = set()
 
     while True:
-        try:
+    print("running loop...")
             trades = get_trades()
 
             for t in reversed(trades):
@@ -149,6 +150,12 @@ def main():
             print("Error:", e)
 
         time.sleep(POLL_INTERVAL)
+def keep_alive():
+    while True:
+        print("🚀 bot alive")
+        time.sleep(60)
 
+threading.Thread(target=keep_alive, daemon=True).start()
 if __name__ == "__main__":
     main()
+
