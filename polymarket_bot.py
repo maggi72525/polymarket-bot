@@ -20,22 +20,22 @@ PROFILE_LINK = f"https://polymarket.com/profile/{WALLET_ADDRESS}"
 # ================== TELEGRAM ==================
 
 def send_telegram(message, reply_to=None):
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-payload = {
-"chat_id": CHAT_ID,
-"text": message,
-"parse_mode": "HTML",
-"disable_web_page_preview": True
-}
-if reply_to:
-payload["reply_to_message_id"] = reply_to
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = {
+            "chat_id": CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
 
-```
-try:
-    r = requests.post(url, json=payload, timeout=15)
-    return r.json().get("result", {}).get("message_id")
-except:
-    return None
+        if reply_to:
+            data["reply_to_message_id"] = reply_to
+
+        requests.post(url, data=data, timeout=10)
+
+    except Exception as e:
+        print("Telegram error:", e)
 ```
 
 # ================== LOAD DATA ==================
@@ -225,3 +225,4 @@ except Exception as e:
     print("Error:",e)
     time.sleep(10)
 ```
+
