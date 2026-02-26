@@ -9,6 +9,7 @@ CHAT_ID = "7086039959"
 WALLET_ADDRESS = "0xc1016d1bfc6244fd51fcf5c8dc1b10afc52be6d1"
 POLL_INTERVAL = 20
 BASE_URL = "https://data-api.polymarket.com"
+PROFILE_LINK = f"https://polymarket.com/profile/{WALLET_ADDRESS}"
 # ==========================================
 
 seen_trade_ids = set()
@@ -81,8 +82,12 @@ def format_trade(trade):
     usdc = float(trade.get("usdcSize", 0))
     asset = f"{market}-{outcome}"
 
-    market_id = trade.get("market", "")
-    market_link = f"https://polymarket.com/market/{market_id}"
+    slug = trade.get("slug")
+
+if slug:
+    market_link = f"https://polymarket.com/event/{slug}"
+else:
+    market_link = "https://polymarket.com"
 
     # ================= BUY =================
     if side == "BUY":
@@ -219,4 +224,5 @@ def monitor():
 # ===== start =====
 if __name__ == "__main__":
     monitor()
+
 
